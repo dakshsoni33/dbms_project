@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Court Pass — Courts</title>
+<link rel="icon" href="/icons/favicon.png">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">CP</div>
+      <div class="brand-name">Court Pass · Admin</div>
+    </div>
+    <button class="icon-btn" onclick="logout()">Log out</button>
+  </div>
+
+  <div class="screen">
+    <div class="screen-header">
+      <h1>Courts</h1>
+      <p class="text-soft">Mark a court under maintenance when it's unusable.</p>
+    </div>
+
+    <div class="list" id="courts-list">
+      <p class="text-faint">Loading…</p>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <a href="/admin/dashboard.html"><span class="nav-dot"></span><span class="nav-label">Requests</span></a>
+    <a href="/admin/complaints.html"><span class="nav-dot"></span><span class="nav-label">Complaints</span></a>
+    <a href="/admin/courts.html" class="active"><span class="nav-dot"></span><span class="nav-label">Courts</span></a>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  const admin = requireSession('admin');
+
+  async function loadCourts() {
+    const list = document.getElementById('courts-list');
+    try {
+      const courts = await api('/courts');
+      list.innerHTML = courts.map((c) => `
+        <div class="card">
+          <div class="card-row">
+            <div>
+              <div class="card-title">${escapeHtml(c.name)}</div>
+              <div class="card-sub">${escapeHtml(c.sport_name)}${c.is_floodlit ? ' · Floodlit' : ''}</div>
+            </div>
+            <span class="badge badge-${c.status === 'maintenance' ? 'maintenance' : c.live_status}">
+              ${c.status === 'maintenance' ? 'Maintenance' : (c.live_status === 'occupied' ? 'Occupied' : 'Free')}
+            </span>
+          </div>
+          <button class="btn ${c.status === 'maintenance' ? 'btn-primary' : 'btn-danger'} btn-sm mt-16"
+                  onclick="toggle(${c.court_id}, '${c.status === 'maintenance' ? 'available' : 'maintenance'}')">
+            ${c.status === 'maintenance' ? 'Mark available' : 'Mark under maintenance'}
+          </button>
+        </div>
+      `).join('');
+    } catch (err) {
+      list.innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+
+  async function toggle(courtId, newStatus) {
+    try {
+      await api(`/courts/${courtId}`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
+      loadCourts();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  loadCourts();
+</script>
+</body>
+</html>

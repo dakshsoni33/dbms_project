@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Court Pass — Profile</title>
+<link rel="icon" href="/icons/favicon.png">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">CP</div>
+      <div class="brand-name">Court Pass</div>
+    </div>
+    <button class="icon-btn" onclick="logout()">Log out</button>
+  </div>
+
+  <div class="screen">
+    <div class="screen-header">
+      <h1>Profile</h1>
+    </div>
+
+    <div class="card">
+      <div class="card-title" id="p-name">—</div>
+      <div class="card-sub" id="p-email">—</div>
+    </div>
+
+    <div class="card">
+      <div class="row-between">
+        <div>
+          <div class="text-faint">Hours booked this week</div>
+          <h2 class="mt-8" id="p-hours">—</h2>
+        </div>
+        <div>
+          <div class="text-faint">Penalty points</div>
+          <h2 class="mt-8" id="p-points">—</h2>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="text-sm text-soft" style="margin-bottom:10px;">Penalty history</h2>
+      <div class="list" id="penalties-list"><p class="text-faint">Loading…</p></div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <a href="/student/home.html"><span class="nav-dot"></span><span class="nav-label">Courts</span></a>
+    <a href="/student/passes.html"><span class="nav-dot"></span><span class="nav-label">My passes</span></a>
+    <a href="/student/profile.html" class="active"><span class="nav-dot"></span><span class="nav-label">Profile</span></a>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  const user = requireSession('student');
+  document.getElementById('p-name').textContent = user.name;
+  document.getElementById('p-email').textContent = user.email;
+
+  async function loadProfile() {
+    try {
+      const profile = await api(`/users/${user.user_id}`);
+      document.getElementById('p-hours').textContent = Number(profile.weekly_hours_used).toFixed(1) + 'h';
+    } catch (err) {
+      document.getElementById('p-hours').textContent = '—';
+    }
+  }
+
+  async function loadPenalties() {
+    const list = document.getElementById('penalties-list');
+    try {
+      const penalties = await api(`/penalties?user_id=${user.user_id}`);
+      const upheld = penalties.filter((p) => p.status === 'upheld');
+      const totalPoints = upheld.reduce((sum, p) => sum + p.points, 0);
+      document.getElementById('p-points').textContent = totalPoints;
+
+      if (penalties.length === 0) {
+        list.innerHTML = '<div class="empty">No penalties on record.</div>';
+        return;
+      }
+
+      list.innerHTML = penalties.map((p) => `
+        <div class="card">
+          <div class="card-row">
+            <div>
+              <div class="card-title" style="font-size:14px;">${escapeHtml(p.reason)}</div>
+              <div class="card-sub">${formatDate(p.penalty_date)}${p.status === 'upheld' ? ' · ' + p.points + ' pts' : ''}</div>
+            </div>
+            <span class="badge badge-${p.status === 'upheld' ? 'rejected' : p.status === 'dismissed' ? 'past' : 'pending'}">
+              ${p.status[0].toUpperCase() + p.status.slice(1)}
+            </span>
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      list.innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+
+  loadProfile();
+  loadPenalties();
+</script>
+</body>
+</html>

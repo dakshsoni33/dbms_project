@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Court Pass — Requests</title>
+<link rel="icon" href="/icons/favicon.png">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">CP</div>
+      <div class="brand-name">Court Pass · Admin</div>
+    </div>
+    <button class="icon-btn" onclick="logout()">Log out</button>
+  </div>
+
+  <div class="screen">
+    <div class="screen-header">
+      <h1>Requests</h1>
+      <p class="text-soft">Approve or reject slot requests as they come in.</p>
+    </div>
+
+    <div class="list" id="requests-list">
+      <p class="text-faint">Loading…</p>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <a href="/admin/dashboard.html" class="active"><span class="nav-dot"></span><span class="nav-label">Requests</span></a>
+    <a href="/admin/complaints.html"><span class="nav-dot"></span><span class="nav-label">Complaints</span></a>
+    <a href="/admin/courts.html"><span class="nav-dot"></span><span class="nav-label">Courts</span></a>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  const admin = requireSession('admin');
+
+  async function loadRequests() {
+    const list = document.getElementById('requests-list');
+    try {
+      const requests = await api('/bookings/pending');
+      if (requests.length === 0) {
+        list.innerHTML = '<div class="empty">No pending requests right now.</div>';
+        return;
+      }
+      list.innerHTML = requests.map((r) => `
+        <div class="card">
+          <div class="card-title">${escapeHtml(r.court_name)} · ${escapeHtml(r.sport_name)}</div>
+          <div class="card-sub">${formatDate(r.booking_date)} · ${formatTime(r.start_time)}–${formatTime(r.end_time)}</div>
+          <div class="card-sub">${escapeHtml(r.student_name)} · ${escapeHtml(r.student_email)}</div>
+          ${r.participants.length ? `<div class="card-sub">With: ${r.participants.map(escapeHtml).join(', ')}</div>` : ''}
+          <div class="row mt-16">
+            <button class="btn btn-primary btn-sm" style="flex:1;" onclick="respond(${r.booking_id}, 'approved')">Approve</button>
+            <button class="btn btn-danger btn-sm" style="flex:1;" onclick="respond(${r.booking_id}, 'rejected')">Reject</button>
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      list.innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+
+  async function respond(bookingId, status) {
+    try {
+      await api(`/bookings/${bookingId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status, admin_id: admin.admin_id }),
+      });
+      loadRequests();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  loadRequests();
+</script>
+</body>
+</html>

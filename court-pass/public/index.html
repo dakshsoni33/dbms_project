@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Court Pass — Log in</title>
+<link rel="icon" href="/icons/favicon.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="login-screen">
+    <div>
+      <div class="login-mark">CP</div>
+      <h1>Court Pass</h1>
+      <p class="text-soft mt-8">One court, one pass at a time.</p>
+    </div>
+
+    <form class="form" id="login-form">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="you@college.edu" required autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter your password" required autocomplete="current-password">
+      </div>
+      <p class="error-text hidden" id="error-text"></p>
+      <button type="submit" class="btn btn-primary" id="submit-btn">Log in</button>
+    </form>
+
+    <div class="login-hint">
+      Demo accounts — admin: <code>admin@college.edu</code> / <code>admin123</code>.
+      Any student account uses password <code>student123</code>
+      (e.g. <code>rohan@college.edu</code>).
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  // Already logged in? Skip straight to the right home screen.
+  const existing = getSession();
+  if (existing) {
+    window.location.href = existing.role === 'admin' ? '/admin/dashboard.html' : '/student/home.html';
+  }
+
+  const form = document.getElementById('login-form');
+  const errorText = document.getElementById('error-text');
+  const submitBtn = document.getElementById('submit-btn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorText.classList.add('hidden');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Logging in…';
+
+    try {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const user = await api('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+      saveSession(user);
+      window.location.href = user.role === 'admin' ? '/admin/dashboard.html' : '/student/home.html';
+    } catch (err) {
+      errorText.textContent = err.message;
+      errorText.classList.remove('hidden');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Log in';
+    }
+  });
+</script>
+</body>
+</html>

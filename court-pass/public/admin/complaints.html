@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Court Pass — Complaints</title>
+<link rel="icon" href="/icons/favicon.png">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">CP</div>
+      <div class="brand-name">Court Pass · Admin</div>
+    </div>
+    <button class="icon-btn" onclick="logout()">Log out</button>
+  </div>
+
+  <div class="screen">
+    <div class="screen-header">
+      <h1>Complaints</h1>
+      <p class="text-soft">Review reports, then uphold or dismiss.</p>
+    </div>
+
+    <div class="list" id="complaints-list">
+      <p class="text-faint">Loading…</p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:14px;">Issue a penalty directly</h2>
+      <form class="form" id="direct-form">
+        <div class="field">
+          <label for="direct-user">Student</label>
+          <select id="direct-user" required></select>
+        </div>
+        <div class="field">
+          <label for="direct-reason">Reason</label>
+          <input type="text" id="direct-reason" placeholder="What happened" required>
+        </div>
+        <div class="field">
+          <label for="direct-points">Points</label>
+          <input type="number" id="direct-points" min="1" max="10" value="1" required>
+        </div>
+        <p class="error-text hidden" id="direct-error"></p>
+        <button type="submit" class="btn btn-secondary" id="direct-submit">Issue penalty</button>
+      </form>
+    </div>
+
+    <div>
+      <h2 class="text-sm text-soft" style="margin-bottom:10px;">Most penalty points</h2>
+      <div class="list" id="leaderboard-list"><p class="text-faint">Loading…</p></div>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <a href="/admin/dashboard.html"><span class="nav-dot"></span><span class="nav-label">Requests</span></a>
+    <a href="/admin/complaints.html" class="active"><span class="nav-dot"></span><span class="nav-label">Complaints</span></a>
+    <a href="/admin/courts.html"><span class="nav-dot"></span><span class="nav-label">Courts</span></a>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  const admin = requireSession('admin');
+
+  async function loadComplaints() {
+    const list = document.getElementById('complaints-list');
+    try {
+      const complaints = await api('/penalties/pending');
+      if (complaints.length === 0) {
+        list.innerHTML = '<div class="empty">No complaints waiting on review.</div>';
+        return;
+      }
+      list.innerHTML = complaints.map((c) => `
+        <div class="card">
+          <div class="card-title">${escapeHtml(c.offender_name)}</div>
+          <div class="card-sub">Reported by ${escapeHtml(c.complainant_name || 'unknown')}${c.court_name ? ' · ' + escapeHtml(c.court_name) : ''}</div>
+          <p class="mt-8 text-sm">${escapeHtml(c.reason)}</p>
+          <div class="row mt-16">
+            <input type="number" min="1" max="10" value="3" id="points-${c.penalty_id}" class="field" style="width:64px; padding:9px; border:1px solid var(--line); border-radius:10px;">
+            <button class="btn btn-primary btn-sm" style="flex:1;" onclick="resolve(${c.penalty_id}, 'upheld')">Uphold</button>
+            <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="resolve(${c.penalty_id}, 'dismissed')">Dismiss</button>
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      list.innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+
+  async function resolve(penaltyId, status) {
+    const pointsInput = document.getElementById(`points-${penaltyId}`);
+    const points = status === 'upheld' ? Number(pointsInput.value || 0) : 0;
+    try {
+      await api(`/penalties/${penaltyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ admin_id: admin.admin_id, points, status }),
+      });
+      loadComplaints();
+      loadLeaderboard();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function loadStudentOptions() {
+    const select = document.getElementById('direct-user');
+    try {
+      const students = await api('/users?role=student');
+      select.innerHTML = students.map((s) => `<option value="${s.user_id}">${escapeHtml(s.name)}</option>`).join('');
+    } catch (err) {
+      select.innerHTML = '';
+    }
+  }
+
+  document.getElementById('direct-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorText = document.getElementById('direct-error');
+    const submitBtn = document.getElementById('direct-submit');
+    errorText.classList.add('hidden');
+    submitBtn.disabled = true;
+
+    try {
+      await api('/penalties', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: Number(document.getElementById('direct-user').value),
+          admin_id: admin.admin_id,
+          reason: document.getElementById('direct-reason').value.trim(),
+          points: Number(document.getElementById('direct-points').value),
+        }),
+      });
+      document.getElementById('direct-form').reset();
+      loadLeaderboard();
+    } catch (err) {
+      errorText.textContent = err.message;
+      errorText.classList.remove('hidden');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  async function loadLeaderboard() {
+    const list = document.getElementById('leaderboard-list');
+    try {
+      const rows = await api('/penalties/leaderboard');
+      if (rows.length === 0) {
+        list.innerHTML = '<div class="empty">No upheld penalties yet.</div>';
+        return;
+      }
+      list.innerHTML = rows.map((r) => `
+        <div class="card card-row">
+          <div class="card-title" style="font-size:14px;">${escapeHtml(r.name)}</div>
+          <span class="badge badge-rejected">${r.total_points} pts</span>
+        </div>
+      `).join('');
+    } catch (err) {
+      list.innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+
+  loadComplaints();
+  loadStudentOptions();
+  loadLeaderboard();
+</script>
+</body>
+</html>

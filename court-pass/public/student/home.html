@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Court Pass — Courts</title>
+<link rel="icon" href="/icons/favicon.png">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">CP</div>
+      <div class="brand-name">Court Pass</div>
+    </div>
+    <button class="icon-btn" onclick="logout()">Log out</button>
+  </div>
+
+  <div class="screen">
+    <div class="screen-header">
+      <h1>Courts</h1>
+      <p class="text-soft">Tap a court to see free slots and request one.</p>
+    </div>
+
+    <div class="list" id="courts-list">
+      <p class="text-faint">Loading courts…</p>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <a href="/student/home.html" class="active"><span class="nav-dot"></span><span class="nav-label">Courts</span></a>
+    <a href="/student/passes.html"><span class="nav-dot"></span><span class="nav-label">My passes</span></a>
+    <a href="/student/profile.html"><span class="nav-dot"></span><span class="nav-label">Profile</span></a>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  const user = requireSession('student');
+
+  const statusLabel = { free: 'Free', occupied: 'Occupied', maintenance: 'Maintenance' };
+
+  async function loadCourts() {
+    const list = document.getElementById('courts-list');
+    try {
+      const courts = await api('/courts');
+      if (courts.length === 0) {
+        list.innerHTML = '<div class="empty">No courts have been added yet.</div>';
+        return;
+      }
+      list.innerHTML = courts.map((c) => {
+        const inner = `
+          <div class="card-row">
+            <div>
+              <div class="card-title">${escapeHtml(c.name)}</div>
+              <div class="card-sub">${escapeHtml(c.sport_name)}${c.is_floodlit ? ' · Floodlit' : ''}</div>
+            </div>
+            <span class="badge badge-${c.live_status}">${statusLabel[c.live_status]}</span>
+          </div>
+        `;
+        // A court under maintenance isn't a link at all — nothing to tap
+        // through to, so there's no request form to reach in the first place.
+        if (c.live_status === 'maintenance') {
+          return `<div class="card" style="opacity:0.55;">${inner}</div>`;
+        }
+        return `<a class="card" href="/student/court.html?id=${c.court_id}&name=${encodeURIComponent(c.name)}&sport=${encodeURIComponent(c.sport_name)}">${inner}</a>`;
+      }).join('');
+    } catch (err) {
+      list.innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+
+  loadCourts();
+</script>
+</body>
+</html>

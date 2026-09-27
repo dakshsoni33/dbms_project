@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Court Pass — My passes</title>
+<link rel="icon" href="/icons/favicon.png">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">CP</div>
+      <div class="brand-name">Court Pass</div>
+    </div>
+    <button class="icon-btn" onclick="logout()">Log out</button>
+  </div>
+
+  <div class="screen">
+    <div class="screen-header">
+      <h1>My passes</h1>
+      <p class="text-soft">A pending request, an active pass, or something past.</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-bucket="pending">Pending</button>
+      <button class="tab" data-bucket="active">Active</button>
+      <button class="tab" data-bucket="past">Past</button>
+    </div>
+
+    <div class="list" id="bookings-list">
+      <p class="text-faint">Loading…</p>
+    </div>
+  </div>
+
+  <div class="bottom-nav">
+    <a href="/student/home.html"><span class="nav-dot"></span><span class="nav-label">Courts</span></a>
+    <a href="/student/passes.html" class="active"><span class="nav-dot"></span><span class="nav-label">My passes</span></a>
+    <a href="/student/profile.html"><span class="nav-dot"></span><span class="nav-label">Profile</span></a>
+  </div>
+</div>
+
+<!-- Complaint sheet -->
+<div class="overlay hidden" id="complaint-overlay">
+  <div class="sheet">
+    <div class="sheet-header">
+      <h2>File a complaint</h2>
+      <button class="icon-btn" onclick="closeComplaint()">Close</button>
+    </div>
+    <p class="text-soft text-sm">
+      Use this if someone tried to make you leave a court you hold an active pass for.
+    </p>
+    <form class="form" id="complaint-form">
+      <div class="field">
+        <label for="offender">Who displaced you?</label>
+        <select id="offender" required></select>
+      </div>
+      <div class="field">
+        <label for="reason">What happened?</label>
+        <textarea id="reason" placeholder="Briefly describe what happened" required></textarea>
+      </div>
+      <p class="error-text hidden" id="complaint-error"></p>
+      <button type="submit" class="btn btn-primary" id="complaint-submit">Submit complaint</button>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  const user = requireSession('student');
+  let allBookings = [];
+  let activeBucket = 'pending';
+  let activeComplaintBookingId = null;
+
+  const bucketCopy = {
+    pending: 'No pending requests right now.',
+    active: 'No active passes right now — request a slot from Courts.',
+    past: 'Nothing here yet.',
+  };
+
+  function render() {
+    const list = document.getElementById('bookings-list');
+    const items = allBookings.filter((b) => b.bucket === activeBucket);
+
+    if (items.length === 0) {
+      list.innerHTML = `<div class="empty">${bucketCopy[activeBucket]}</div>`;
+      return;
+    }
+
+    list.innerHTML = items.map((b) => {
+      let badge = `<span class="badge badge-${b.status}">${b.status[0].toUpperCase() + b.status.slice(1)}</span>`;
+      if (b.bucket === 'active') {
+        badge = b.is_live
+          ? '<span class="badge badge-active">Live now</span>'
+          : `<span class="badge badge-pending">Starts ${formatTime(b.start_time)}</span>`;
+      }
+
+      const complaintButton = (b.bucket === 'active' && b.is_live)
+        ? `<button class="btn btn-secondary btn-sm mt-8" onclick="openComplaint(${b.booking_id})">File complaint</button>`
+        : '';
+
+      return `
+        <div class="card">
+          <div class="card-row">
+            <div>
+              <div class="card-title">${escapeHtml(b.court_name)}</div>
+              <div class="card-sub">${escapeHtml(b.sport_name)} · ${formatDate(b.booking_date)} · ${formatTime(b.start_time)}–${formatTime(b.end_time)}</div>
+              ${b.participants.length ? `<div class="card-sub">With: ${b.participants.map(escapeHtml).join(', ')}</div>` : ''}
+            </div>
+            ${badge}
+          </div>
+          ${complaintButton}
+        </div>
+      `;
+    }).join('');
+  }
+
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeBucket = tab.dataset.bucket;
+      render();
+    });
+  });
+
+  async function loadBookings() {
+    try {
+      allBookings = await api(`/bookings?user_id=${user.user_id}`);
+      render();
+    } catch (err) {
+      document.getElementById('bookings-list').innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+
+  // ---------- Complaint sheet ----------
+
+  async function openComplaint(bookingId) {
+    activeComplaintBookingId = bookingId;
+    document.getElementById('complaint-overlay').classList.remove('hidden');
+    document.getElementById('complaint-error').classList.add('hidden');
+
+    const select = document.getElementById('offender');
+    select.innerHTML = '<option>Loading…</option>';
+    try {
+      const students = await api('/users?role=student');
+      const others = students.filter((s) => s.user_id !== user.user_id);
+      select.innerHTML = others.map((s) => `<option value="${s.user_id}">${escapeHtml(s.name)}</option>`).join('');
+    } catch (err) {
+      select.innerHTML = '';
+      document.getElementById('complaint-error').textContent = err.message;
+      document.getElementById('complaint-error').classList.remove('hidden');
+    }
+  }
+
+  function closeComplaint() {
+    document.getElementById('complaint-overlay').classList.add('hidden');
+    document.getElementById('complaint-form').reset();
+  }
+
+  document.getElementById('complaint-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorText = document.getElementById('complaint-error');
+    const submitBtn = document.getElementById('complaint-submit');
+    errorText.classList.add('hidden');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting…';
+
+    try {
+      await api('/complaints', {
+        method: 'POST',
+        body: JSON.stringify({
+          offender_user_id: Number(document.getElementById('offender').value),
+          booking_id: activeComplaintBookingId,
+          reason: document.getElementById('reason').value.trim(),
+        }),
+      });
+      closeComplaint();
+    } catch (err) {
+      errorText.textContent = err.message;
+      errorText.classList.remove('hidden');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit complaint';
+    }
+  });
+
+  loadBookings();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "court-pass-server",
+  "version": "1.0.0",
+  "description": "Backend for Court Pass - a fair-access booking system for college sports courts",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^4.22.3",
+    "express-async-errors": "^3.1.1",
+    "mysql2": "^3.24.4"
+  }
+}

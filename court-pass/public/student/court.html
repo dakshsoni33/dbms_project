@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Court Pass — Request a slot</title>
+<link rel="icon" href="/icons/favicon.png">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brand">
+      <a href="/student/home.html" class="icon-btn" style="padding-left:0;">← Back</a>
+    </div>
+    <button class="icon-btn" onclick="logout()">Log out</button>
+  </div>
+
+  <div class="screen">
+    <div class="screen-header">
+      <h1 id="court-name">Court</h1>
+      <p class="text-soft" id="court-sport"></p>
+    </div>
+
+    <div class="card hidden" id="maintenance-banner" style="border-color:var(--danger); background:var(--danger-bg);">
+      <p style="color:var(--danger); font-weight:600;">This court is currently under maintenance and can't be booked.</p>
+    </div>
+
+    <div class="field" id="date-field">
+      <label for="date">Date</label>
+      <input type="date" id="date">
+    </div>
+
+    <div id="availability-section">
+      <h2 class="text-sm text-soft" style="margin-bottom:10px;">Already taken that day</h2>
+      <div class="list" id="taken-list"><p class="text-faint">Pick a date to check.</p></div>
+    </div>
+
+    <div class="card" id="request-card">
+      <h2 style="margin-bottom:14px;">Request a slot</h2>
+      <form class="form" id="request-form">
+        <div class="row">
+          <div class="field" style="flex:1;">
+            <label for="start">Start</label>
+            <input type="time" id="start" required>
+          </div>
+          <div class="field" style="flex:1;">
+            <label for="end">End</label>
+            <input type="time" id="end" required>
+          </div>
+        </div>
+        <div class="field">
+          <label>Add teammates (optional)</label>
+          <div class="list" id="teammates-list" style="max-height:160px; overflow-y:auto;">
+            <p class="text-faint">Loading students…</p>
+          </div>
+        </div>
+        <p class="error-text hidden" id="error-text"></p>
+        <p class="text-faint hidden" id="success-text"></p>
+        <button type="submit" class="btn btn-primary" id="submit-btn">Send request</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  const user = requireSession('student');
+  const params = new URLSearchParams(window.location.search);
+  const courtId = params.get('id');
+
+  document.getElementById('court-name').textContent = params.get('name') || 'Court';
+  document.getElementById('court-sport').textContent = params.get('sport') || '';
+
+  // Guards against a bookmarked link or a court going into maintenance
+  // after the page was opened — the home screen already hides this case,
+  // but this page shouldn't trust that on its own.
+  async function checkCourtStatus() {
+    try {
+      const courts = await api('/courts');
+      const court = courts.find((c) => c.court_id === Number(courtId));
+      if (court && court.status === 'maintenance') {
+        document.getElementById('maintenance-banner').classList.remove('hidden');
+        document.getElementById('date-field').classList.add('hidden');
+        document.getElementById('availability-section').classList.add('hidden');
+        document.getElementById('request-card').classList.add('hidden');
+        return false;
+      }
+      return true;
+    } catch (err) {
+      return true; // don't block booking just because this extra check failed
+    }
+  }
+
+  const dateInput = document.getElementById('date');
+  dateInput.value = todayISO();
+  dateInput.min = todayISO();
+
+  async function loadTeammateOptions() {
+    const list = document.getElementById('teammates-list');
+    try {
+      const students = await api('/users?role=student');
+      const others = students.filter((s) => s.user_id !== user.user_id);
+      if (others.length === 0) {
+        list.innerHTML = '<p class="text-faint">No other students to add.</p>';
+        return;
+      }
+      list.innerHTML = others.map((s) => `
+        <label class="row" style="font-weight:400; padding:6px 0;">
+          <input type="checkbox" value="${s.user_id}" class="teammate-checkbox">
+          <span>${escapeHtml(s.name)}</span>
+        </label>
+      `).join('');
+    } catch (err) {
+      list.innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+  loadTeammateOptions();
+
+  async function loadAvailability() {
+    const list = document.getElementById('taken-list');
+    list.innerHTML = '<p class="text-faint">Checking…</p>';
+    try {
+      const taken = await api(`/courts/${courtId}/availability?date=${dateInput.value}`);
+      if (taken.length === 0) {
+        list.innerHTML = '<div class="empty">Nothing booked yet — the whole day is open.</div>';
+        return;
+      }
+      list.innerHTML = taken.map((t) => `
+        <div class="card">
+          <div class="card-row">
+            <div class="card-title" style="font-size:14px;">${formatTime(t.start_time)} – ${formatTime(t.end_time)}</div>
+            <span class="badge badge-${t.status}">${t.status === 'pending' ? 'Requested' : 'Booked'}</span>
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      list.innerHTML = `<p class="error-text">${err.message}</p>`;
+    }
+  }
+
+  dateInput.addEventListener('change', loadAvailability);
+  checkCourtStatus().then((ok) => { if (ok) loadAvailability(); });
+
+  const form = document.getElementById('request-form');
+  const errorText = document.getElementById('error-text');
+  const successText = document.getElementById('success-text');
+  const submitBtn = document.getElementById('submit-btn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorText.classList.add('hidden');
+    successText.classList.add('hidden');
+
+    const start = document.getElementById('start').value;
+    const end = document.getElementById('end').value;
+
+    if (!start || !end || start >= end) {
+      errorText.textContent = 'End time must be after start time.';
+      errorText.classList.remove('hidden');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending…';
+
+    try {
+      const participant_ids = Array.from(document.querySelectorAll('.teammate-checkbox:checked')).map((el) => Number(el.value));
+      await api('/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          court_id: Number(courtId),
+          user_id: user.user_id,
+          booking_date: dateInput.value,
+          start_time: start + ':00',
+          end_time: end + ':00',
+          participant_ids,
+        }),
+      });
+      successText.textContent = 'Request sent — find it under My passes once the admin responds.';
+      successText.classList.remove('hidden');
+      form.reset();
+      dateInput.value = todayISO();
+      loadAvailability();
+    } catch (err) {
+      errorText.textContent = err.message;
+      errorText.classList.remove('hidden');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send request';
+    }
+  });
+</script>
+</body>
+</html>
